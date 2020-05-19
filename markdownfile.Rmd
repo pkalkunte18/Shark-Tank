@@ -1,0 +1,405 @@
+---
+title: "Shark Tank Analysis"
+author: "Vee Kalkunte"
+date: "March 22, 2020"
+output: html_document
+---
+
+##Welcome to the tank!
+
+Shark Tank is a reality TV hit that premiered on August of 2009, and has now entered 2020 with its 11th season. The premise is straightforward: an entrepeneur comes into the tank and pitches their company to 5 "sharks" (investors) in order to recieve a cash investment/mentorship/help in return for a stake in their company. The most common investors, and the ones we'll be focusing on, are Mark Cuban, Lori Greiner, Robert Herjavec, Daymond John, Barbara Corcoran, and Kevin O'Leary. There have been guest sharks over the seasons, but as they're in a minority, this analysis will focus on the big 6. 
+
+###What are we investigating?
+
+We're looking at a Shark Tank dataset by @halletecco, which presents to us data from the first 6 seasons of the show. Using readr toimport our data, dyplr to clean our data, and ggplot2 to display graphs.
+
+```{r, echo = FALSE, warning = FALSE, error = FALSE}
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(formattable)
+```
+
+
+Here's a quick look at the dataset:
+```{r, firstview, echo = FALSE, warning = FALSE, tidy = TRUE}
+shark <- read_csv("SharkTankData by @halletecco.csv")
+head(shark)
+```
+
+As we can see, there's a little bit of cleaning we need to do before we're ready to use this dataset. In particular, we're going to need to figure out how to get rid of the NAs, as well as how to mutate the deal data such that we have columns we can actually make tables/graphs out of. 
+
+
+###Quick Cleaning Montage
+
+An overview of what we've done to clean up the data:
+```{r cleaning, warning = FALSE, tidy = TRUE, message = FALSE}
+
+#first rename the variables so they're more comprehensible
+names(shark) <- c("Row", "Season", "Number", "Company", "Deal", "Industry", "Gender", "Amount", "Equity", "Valuation", "Corcoran", "Cuban", "Greiner", "Herjavec", "John", "OLeary", "Harrington", "Guest", "numSharks", "perShark", "Details")
+
+#Turn deals, and deals with specific sharks, to logicals rather than characters
+one <- shark %>% 
+  mutate(DealBool = ifelse(Deal == "Yes", TRUE, FALSE)) %>% 
+  mutate(CorcoranDeal = ifelse(is.na(Corcoran), FALSE, TRUE)) %>% 
+  mutate(CubannDeal = ifelse(is.na(Cuban), FALSE, TRUE)) %>% 
+  mutate(GrenierDeal = ifelse(is.na(Greiner), FALSE, TRUE)) %>% 
+  mutate(HerjavecDeal = ifelse(is.na(Herjavec), FALSE, TRUE)) %>% 
+  mutate(JohnDeal = ifelse(is.na(John), FALSE, TRUE)) %>% 
+  mutate(OLearyDeal = ifelse(is.na(OLeary), FALSE, TRUE)) %>% 
+  mutate(HarringtonDeal = ifelse(is.na(Harrington), FALSE, TRUE)) %>%
+  mutate(GuestDeal = ifelse(is.na(Guest), FALSE, TRUE))
+
+#Turn seasons, gender, and Industry into factors
+two <- one %>% mutate(sex = as.factor(Gender)) %>% 
+  mutate(seasons = as.factor(Season)) %>% 
+  mutate(Industries = as.factor(Industry))
+
+#Turn valuation, amount, perShark, and equity into numericals
+three <- two %>% 
+  mutate(amount = parse_number(Amount)) %>% 
+  mutate(valuation = parse_number(Valuation)) %>% 
+  mutate(percent = parse_number(Equity)) %>% 
+  mutate(eachShark = parse_number(perShark)) %>% 
+  mutate(numShark = numSharks)
+
+#pull out our new variables (rather than the old ones) and get rid of that extra blank row
+data <- three[, c(1, 32, 3, 4, 22, 33, 31, 34, 36, 35, 23, 24, 25, 26, 27, 28, 29, 30, 38, 37, 21)]
+names(data) <- c("Row", "Season", "Number", "Company", "Deal", "Industry", "Gender", "Amount", "Equity", "Valuation", "Corcoran", "Cuban", "Greiner", "Herjavec", "John", "OLeary", "Harrington", "Guest", "numSharks", "perShark", "Details")
+data <- data %>% filter(!is.na(Season)) %>% mutate(Row = Row-1)
+
+#Let's also break it down by whether or not someone got a deal, and with who.
+barbaraDeals <- data %>% filter(Corcoran)
+markDeals <- data %>% filter(Cuban)
+loriDeals <- data %>% filter(Greiner)
+robertDeals <- data %>% filter(Herjavec)
+daymondDeals <- data %>% filter(John)
+kevinDeals <- data %>% filter(OLeary)
+multiSharkDeals <- data %>% filter(numSharks > 1)
+
+deal <- data %>% filter(!is.na(Amount))
+noDeal <- data %>% filter(is.na(Amount))
+
+```
+
+
+Here's a look at our cleaned up dataset:
+```{r secondview, echo = FALSE, warning = FALSE, tidy = TRUE}
+head(data)
+
+```
+
+We still have some NAs floating around there, but we can filter them out as needed - if we took them all out right now, it would impact our analysis in a detrimental way - there's a lot of observations with partially missing data, so they can still be useful. Besides - Amount, Equity, and Valuation only record the *closing* amount, equity, and valuation. Becuase of this, getting rid of rows with NAs would limit us to the deals only dataset, and then some.
+
+
+##General Trends
+
+
+###Distribution of Deals by Gender:
+```{r gender check, echo = FALSE, warning = FALSE, tidy = TRUE}
+#Find the gender distributions by deals
+genderByDeal <- data %>% filter(!is.na(Gender)) %>% mutate(DealFact = ifelse(Deal, "Yes", "No")) %>% 
+  mutate(DealFact = as.factor(DealFact)) %>% ggplot(aes(x = DealFact, fill = Gender)) + 
+  geom_bar(position = "dodge", stat = 'count') + 
+  labs(x = "Got a Deal?", y = "Number", title = "Gender Distribution: No Deals Vs. Deals")
+
+genderByDeal
+```
+
+As we can see, the distribution of gender between the group that got a deal and the group that didn't get a deal isn't too different - there's just a bit more women on the group that did get the deal.
+
+
+#Distribution of deals by Industry:
+```{r byindustry, echo = FALSE, warning = FALSE, tidy = TRUE}
+#deals by industry
+dealByIndustry <- data %>% 
+  filter(!is.na(Industry) & !is.na(Deal)) %>% 
+  mutate(DealFact = ifelse(Deal, "Yes", "No")) %>% 
+  mutate(DealFact = as.factor(DealFact)) %>% 
+  ggplot(aes(x = Industry, fill = DealFact)) + 
+  geom_bar() + coord_flip() +
+  labs(x = "Industry", y = "Proportion", title = "Deal Distribution by Industry")
+
+dealByIndustry
+
+```
+
+Some observations, as there are differneces in the success rate betweeen industries:
+
+* The most common industry an entrepeneur is in is Food, with Fasion following. 
+* The least common is Green, Business services, and Media companies.
+* Fitness companies have the highest proportion of deals.
+* Business services and pet products have the least amount of success.
+
+
+###Distributions of Deal Amount, Equity Taken, Valuation Given:
+```{r Amount distributions, echo = FALSE, warning = FALSE, tidy = TRUE}
+#boxplot of deal amounts
+amountBox <- deal %>% filter(Amount <= 1000000) %>% 
+  ggplot(aes(x = "", y = Amount)) + geom_boxplot() + 
+  labs(x = "", y = "Deal Amount", title = "Distribution of Deal Amount")
+amountBox
+
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#general stats on the distributions
+deal %>% mutate(Amount = accounting(Amount)) %>% 
+  summarize(min = min(Amount), med = median(Amount), 
+            mean = mean(Amount),  max = max(Amount)) %>% 
+  setNames(c("Min Amount", "Median Amount", "Mean Amount", "Max Amount"))
+```
+
+```{r equity distributions, echo = FALSE, warning = FALSE, tidy = TRUE}
+#boxplot of deal percentages
+equityBox <- deal %>% ggplot(aes(x = "", y = Equity)) + 
+  geom_boxplot() + 
+  labs(x = "", y = "Equity Percent", title = "Distribution of Deal Equity")
+equityBox
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#general stats on the distributions
+deal %>% filter(!is.na(Equity)) %>% 
+  mutate(Equity = accounting(Equity)) %>% 
+  summarize(min = min(Equity), med = median(Equity), 
+            mean = mean(Equity),  max = max(Equity)) %>% 
+  setNames(c("Min Equity", "Median Equity", 
+             "Mean Equity", "Max Equity"))
+```
+
+```{r valuations, echo = FALSE, warning = FALSE, tidy = TRUE}
+#boxplot of valuations (zoom in to 2 million cap) - Median is around 375,000 valuations
+valBox <- deal %>% filter(Valuation <= 2000000) %>% 
+  ggplot(aes(x = "", y = Valuation)) + 
+  geom_boxplot() + 
+  labs(x = "", y = "Deal Valuation", title = "Distribution of Deal Valuations")
+valBox
+
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#general stats on the distributions
+deal %>% filter(!is.na(Valuation)) %>%
+  mutate(Valuation = accounting(Valuation)) %>% 
+  summarize(min = min(Valuation), med = median(Valuation), 
+            mean = mean(Valuation),  max = max(Valuation)) %>% 
+  setNames(c("Min Valuation", "Median Valuation", 
+             "Mean Valuation", "Max Valuation"))
+```
+
+
+But this is an overall perspective - intuitively, we can guess that these metrics will change across industry. To see just how much, and to see what industries take the cake in each catagory, let's break it down:
+```{r by industry 2, echo = FALSE, warning = FALSE, tidy = TRUE}
+modDeal <- deal %>% 
+  filter(!is.na(Equity) & !is.na(Amount) & !is.na(Valuation) & !is.na(Industry)) %>%
+  select(Industry, Amount, Equity, Valuation)
+
+indusTable <- modDeal%>% select(Amount, Equity, Valuation) %>% 
+  aggregate(by = list(modDeal$Industry), FUN = mean) %>% 
+  mutate(Amount = accounting(Amount)) %>% 
+  mutate(Equity = percent(Equity*.01)) %>% 
+  mutate(Valuation = accounting(Valuation)) %>% 
+  setNames(c("Industry", "Mean Amount", "Mean Equity", 
+             "Mean Ending Valuation"))
+indusTable
+```
+
+Some things to note on average:
+
+* The cheapest deals are in the Pet industry, while the most expensive is in Green/Clean Tech.
+* The least equity given is found in Media/Entertainment, while the most is in the Other catagory and Pet products
+* The highest Valuation was given to Media/Entertainment, while the lowest is in Pet products.
+
+
+##Shark-Specific Trends
+
+Now, let's break the data down to observe some shark-specific trends:
+
+###Barbara Corcoran
+```{r barbara, echo = FALSE, warning = FALSE, tidy = TRUE}
+#barbara deals industry
+barbIndustries<- barbaraDeals %>% 
+  filter(!is.na(Industry)) %>% 
+  ggplot(aes(x = Industry)) +
+  geom_bar() + coord_flip() + 
+  labs(x = "Barbara's Industries", y = "Frequency", 
+       title = "Barbara Corcoran: Investment by Industry")
+barbIndustries
+
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#find Barbara's average stats...
+barbPlots <- barbaraDeals %>% 
+  filter(!is.na(Equity) & !is.na(Amount) & !is.na(Valuation)) %>% 
+  select(Amount, Equity, Valuation) %>% 
+  mutate(Amount = accounting(Amount)) %>% 
+  mutate(Equity = percent(Equity*.01)) %>% 
+  mutate(Valuation = accounting(Valuation)) %>% 
+  summarize(Companies = n(), MeanAmount = mean(Amount), MeanEquity = mean(Equity),
+            meanValuation = mean(Valuation)) %>% 
+  setNames(c("Companies", "Mean Amount", 
+             "Mean Equity", "Mean Ending"))
+barbPlots
+```
+
+
+###Lori Greiner
+```{r lori, echo = FALSE, warning = FALSE, tidy = TRUE}
+#lori deals by industry
+loriIndustries<- loriDeals %>% 
+  filter(!is.na(Industry)) %>% 
+  ggplot(aes(x = Industry)) +
+  geom_bar() + coord_flip() + 
+  labs(x = "Lori's Industries", y = "Frequency", 
+       title = "Lori Greiner: Investment by Industry")
+loriIndustries 
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#find Lori's average stats...
+loriPlots <- loriDeals %>% 
+  filter(!is.na(Equity) & !is.na(Amount) & !is.na(Valuation)) %>% 
+  select(Amount, Equity, Valuation) %>% 
+  mutate(Amount = accounting(Amount)) %>% 
+  mutate(Equity = percent(Equity*.01)) %>% 
+  mutate(Valuation = accounting(Valuation)) %>% 
+  summarize(Companies = n(), MeanAmount = mean(Amount), MeanEquity = mean(Equity),
+            meanValuation = mean(Valuation)) %>% 
+  setNames(c("Companies", "Mean Amount", 
+             "Mean Equity", "Mean Ending"))
+loriPlots
+```
+
+
+###Mark Cuban
+```{r mark, echo = FALSE, warning = FALSE, tidy = TRUE}
+#Mark industry spread
+markIndustries<- markDeals %>% filter(!is.na(Industry)) %>% 
+  ggplot(aes(x = Industry)) +
+  geom_bar() + coord_flip() + 
+  labs(x = "Mark's Industries", y = "Frequency", 
+       title = "Mark Cuban: Investment by Industry")
+markIndustries
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#find Mark's average stats...
+markPlots <- markDeals %>% 
+  filter(!is.na(Equity) & !is.na(Amount) & !is.na(Valuation)) %>% 
+  select(Amount, Equity, Valuation) %>% 
+  mutate(Amount = accounting(Amount)) %>% 
+  mutate(Equity = percent(Equity*.01)) %>% 
+  mutate(Valuation = accounting(Valuation)) %>% 
+  summarize(Companies = n(), MeanAmount = mean(Amount), 
+            MeanEquity = mean(Equity), meanValuation = mean(Valuation)) %>%
+  setNames(c("Companies", "Mean Amount", 
+             "Mean Equity", "Mean Ending"))
+markPlots
+```
+
+
+###Daymond John
+```{r Daymond, echo = FALSE, warning = FALSE, tidy = TRUE}
+#daymond's industry spread 
+daymondIndustries<- daymondDeals %>% 
+  filter(!is.na(Industry)) %>% 
+  ggplot(aes(x = Industry)) +
+  geom_bar() + coord_flip() + 
+  labs(x = "Daymond's Industries", y = "Frequency", title = "Daymond John: Investment by Industry")
+daymondIndustries 
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#find daymond's average stats...
+daymondPlots <- daymondDeals %>% 
+  filter(!is.na(Equity) & !is.na(Amount) & !is.na(Valuation)) %>% 
+  select(Amount, Equity, Valuation) %>% 
+  mutate(Amount = accounting(Amount)) %>% 
+  mutate(Equity = percent(Equity*.01)) %>% 
+  mutate(Valuation = accounting(Valuation)) %>% 
+  summarize(Companies = n(), MeanAmount = mean(Amount), MeanEquity = mean(Equity), 
+            meanValuation = mean(Valuation)) %>% 
+  setNames(c("Companies", "Mean Amount", 
+             "Mean Equity", "Mean Ending"))
+daymondPlots
+```
+
+
+###Robert Herjavec
+```{r Robert, echo = FALSE, warning = FALSE, tidy = TRUE}
+#robert's industry spread
+robertIndustries<- robertDeals %>% 
+  filter(!is.na(Industry)) %>% 
+  ggplot(aes(x = Industry)) +
+  geom_bar() + coord_flip() + 
+  labs(x = "Robert's Industries", y = "Frequency",
+       title = "Robert Herjavec: Investment by Industry")
+robertIndustries #most likely to invest in lifestyle/home, fitness, fashion; least in media, consumer products
+
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#find robert's average stats...
+robertPlots <- robertDeals %>% 
+  filter(!is.na(Equity) & !is.na(Amount) & !is.na(Valuation)) %>% 
+  mutate(Amount = accounting(Amount)) %>% 
+  mutate(Equity = percent(Equity*.01)) %>% 
+  mutate(Valuation = accounting(Valuation)) %>% 
+  summarize(Companies = n(), MeanAmount = mean(Amount), MeanEquity = mean(Equity), 
+                meanValuation = mean(Valuation)) %>% 
+  setNames(c("Companies", "Mean Amount", 
+             "Mean Equity", "Mean Ending"))
+robertPlots
+```
+
+
+###Mr. Wonderful
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+#kevin's industry spread
+kevinIndustries<- kevinDeals %>% 
+  filter(!is.na(Industry)) %>% 
+  ggplot(aes(x = Industry)) +
+  geom_bar() + coord_flip() + 
+  labs(x = "Kevin's Industries", y = "Proportion", title = "Kevin O'Leary: Investment by Industry")
+kevinIndustries
+
+```
+
+```{r echo = FALSE, warning = FALSE, tidy = TRUE}
+
+#find robert's average stats...
+kevinPlots <- kevinDeals %>% 
+  filter(!is.na(Equity) & !is.na(Amount) & !is.na(Valuation)) %>% 
+  select(Amount, Equity, Valuation) %>% 
+  mutate(Amount = accounting(Amount)) %>% mutate(Equity = percent(Equity*.01)) %>% 
+  mutate(Valuation = accounting(Valuation)) %>% 
+  summarize(Companies = n(), MeanAmount = mean(Amount), MeanEquity = mean(Equity), 
+            meanValuation = mean(Valuation)) %>% 
+  setNames(c("Companies", "Mean Amount", 
+             "Mean Equity", "Mean Ending"))
+kevinPlots
+```
+
+
+As we look at the shark profiles, some general observations:
+
+* Mark has the most investments at 76, with Kevin O'Leary at the least, with 31
+* Barbara has the smallest mean amount given, while Robert has the most
+* Daymond takes the most equity, while Lori takes the least
+* Kevin gies the highest valuations, while Daymond gives the lowest
+
+
+Of course, we see the well-advertized specialities reflected in their frequency of investment within companies as well. 
+
+##Notes for Further Research
+A few notes for further research:
+
+ - Of course, the more recent seasons
+ - Note that we didn't have the asked equity and amounts, only the closed equity and amounts. This means that we can't measure how much of a difference there is between ask and delivery, as well as the trends within the asks themselves. That omitted data may be pivotal for developing a model for predicting whether or not a company gets a deal.
+ 
+
+###Sources
+Dataset from Halle Tecco from Quora (https://www.quora.com/What-have-you-learned-from-watching-the-television-program-Shark-Tank/answer/Halle-Tecco)
+Produced in R Studio
